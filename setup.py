@@ -314,6 +314,7 @@ class CustomAscendCmakeBuildExt(build_ext):
             f"  -DARCH={arch}"
             "  -DUSE_ASCEND=1"
             f"  -DPYTHON_EXECUTABLE={python_executable}"
+            f"  -DPython3_EXECUTABLE={python_executable}"
             f"  -DCMAKE_PREFIX_PATH={pybind11_cmake_path}"
             f"  -DCMAKE_BUILD_TYPE=Release"
             f"  -DCMAKE_INSTALL_PREFIX={install_path}"

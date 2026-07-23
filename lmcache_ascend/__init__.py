@@ -390,10 +390,10 @@ def _patch_vllm_v1_adapter():
 
     lmc_vllm_v1_adapter.LMCacheConnectorV1Impl = ascend_LMCacheAscendConnectorV1Impl
 
-    def handle_preemptions(self, preempted_req_ids):
+    def handle_preemptions(self, metadata):
         method = getattr(self._lmcache_engine, "handle_preemptions", None)
         if callable(method):
-            method(preempted_req_ids)
+            method(metadata)
 
     vllm_lmcache_connector.LMCacheConnectorV1.handle_preemptions = handle_preemptions
 

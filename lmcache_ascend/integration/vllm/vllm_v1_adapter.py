@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Standard
+from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Optional
 
 # Third Party
@@ -14,6 +15,7 @@ from vllm.config import (
 )
 from vllm.distributed.kv_transfer.kv_connector.v1.base import (
     KVConnectorBase_V1,
+    KVConnectorMetadata,
     KVConnectorRole,
 )
 from vllm.distributed.parallel_state import get_pp_group
@@ -23,9 +25,33 @@ import torch
 if TYPE_CHECKING:
     # Third Party
     from vllm.forward_context import ForwardContext
+    from vllm.v1.core.sched.output import SchedulerOutput
     from vllm.v1.request import Request
 
 logger = init_logger(__name__)
+
+
+@dataclass
+class LMCacheAscendConnectorMetadata(LMCacheConnectorMetadata):
+    """LMCache metadata extended with vLLM-HUST preemption events."""
+
+    preempted_req_ids: set[str] = field(default_factory=set)
+
+
+def _with_preempted_req_ids(
+    metadata: LMCacheConnectorMetadata,
+    preempted_req_ids: set[str],
+) -> LMCacheAscendConnectorMetadata:
+    """Preserve all upstream metadata fields while adding HUST events."""
+
+    values = {
+        metadata_field.name: getattr(metadata, metadata_field.name)
+        for metadata_field in fields(metadata)
+    }
+    return LMCacheAscendConnectorMetadata(
+        **values,
+        preempted_req_ids=set(preempted_req_ids),
+    )
 
 
 class LMCacheAscendConnectorV1Impl(LMCacheConnectorV1Impl):
@@ -42,6 +68,20 @@ class LMCacheAscendConnectorV1Impl(LMCacheConnectorV1Impl):
         self._finished_req_ids_waiting_for_save: set[str] = set()
         self._late_finished_sending: set[str] = set()
         logger.debug("store_async: %s", self.store_async)
+
+    def build_connector_meta(
+        self,
+        scheduler_output: "SchedulerOutput",
+    ) -> KVConnectorMetadata:
+        """Attach vLLM-HUST preemption IDs to the normal LMCache metadata."""
+
+        metadata = super().build_connector_meta(scheduler_output)
+        assert isinstance(metadata, LMCacheConnectorMetadata)
+        preempted_req_ids = getattr(scheduler_output, "preempted_req_ids", None)
+        return _with_preempted_req_ids(
+            metadata,
+            set(preempted_req_ids or ()),
+        )
 
     @_lmcache_nvtx_annotate
     def start_load_kv(self, forward_context: "ForwardContext", **kwargs) -> None:
@@ -232,7 +272,22 @@ class LMCacheAscendConnectorV1Impl(LMCacheConnectorV1Impl):
             None,
         )
 
-    def handle_preemptions(self, preempted_req_ids: set[str]) -> None:
+    def handle_preemptions(
+        self,
+        metadata: KVConnectorMetadata | set[str],
+    ) -> None:
+        """Handle both vLLM-HUST metadata and the legacy request-ID API."""
+
+        if isinstance(metadata, LMCacheConnectorMetadata):
+            preempted_req_ids = set(
+                getattr(metadata, "preempted_req_ids", ())
+            )
+        else:
+            preempted_req_ids = set(metadata)
+
+        if not preempted_req_ids:
+            return
+
         if self.lmcache_engine is None:
             return
 

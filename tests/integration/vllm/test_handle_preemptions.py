@@ -32,16 +32,17 @@ def _make_adapter(adapter_mod, *, store_async, kv_role, lmcache_engine):
 def test_lmcache_connector_delegates_preemptions_after_ascend_patch():
     """Ascend patches the outer vLLM connector to delegate preemptions."""
     LMCacheConnectorV1 = _import_and_patch_vllm_connector()
+    adapter_mod = pytest.importorskip("lmcache_ascend.integration.vllm.vllm_v1_adapter")
 
     connector = object.__new__(LMCacheConnectorV1)
     connector._lmcache_engine = MagicMock()
 
-    preempted_req_ids = {"req-1", "req-2"}
-    connector.handle_preemptions(preempted_req_ids)
-
-    connector._lmcache_engine.handle_preemptions.assert_called_once_with(
-        preempted_req_ids
+    metadata = adapter_mod.LMCacheAscendConnectorMetadata(
+        preempted_req_ids={"req-1", "req-2"}
     )
+    connector.handle_preemptions(metadata)
+
+    connector._lmcache_engine.handle_preemptions.assert_called_once_with(metadata)
 
 
 def test_lmcache_connector_preemption_patch_handles_no_inner_impl():
@@ -51,7 +52,26 @@ def test_lmcache_connector_preemption_patch_handles_no_inner_impl():
     connector = object.__new__(LMCacheConnectorV1)
     connector._lmcache_engine = object()
 
-    connector.handle_preemptions({"req-1"})
+    connector.handle_preemptions(MagicMock())
+
+
+def test_ascend_metadata_preserves_lmcache_fields_and_preemptions():
+    """HUST preemption IDs travel with the regular LMCache metadata."""
+    pytest.importorskip("lmcache")
+    pytest.importorskip("vllm")
+    adapter_mod = pytest.importorskip("lmcache_ascend.integration.vllm.vllm_v1_adapter")
+
+    request = MagicMock()
+    base_metadata = adapter_mod.LMCacheConnectorMetadata(requests=[request])
+
+    metadata = adapter_mod._with_preempted_req_ids(
+        base_metadata,
+        {"req-1", "req-2"},
+    )
+
+    assert isinstance(metadata, adapter_mod.LMCacheConnectorMetadata)
+    assert metadata.requests == [request]
+    assert metadata.preempted_req_ids == {"req-1", "req-2"}
 
 
 def test_ascend_adapter_drains_pending_stores_for_async_producer():
@@ -69,10 +89,14 @@ def test_ascend_adapter_drains_pending_stores_for_async_producer():
         lmcache_engine=lmcache_engine,
     )
 
-    preempted_req_ids = {"req-1", "req-2"}
-    adapter.handle_preemptions(preempted_req_ids)
+    metadata = adapter_mod.LMCacheAscendConnectorMetadata(
+        preempted_req_ids={"req-1", "req-2"}
+    )
+    adapter.handle_preemptions(metadata)
 
-    lmcache_engine.wait_for_pending_stores.assert_called_once_with(preempted_req_ids)
+    expected_req_ids = {"req-1", "req-2"}
+    lmcache_engine.wait_for_pending_stores.assert_called_once_with(expected_req_ids)
+    assert lmcache_engine.lookup_unpin.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -98,7 +122,29 @@ def test_ascend_adapter_skips_preemption_drain_when_not_required(
         lmcache_engine=lmcache_engine,
     )
 
-    adapter.handle_preemptions({"req-1"})
+    metadata = adapter_mod.LMCacheAscendConnectorMetadata(
+        preempted_req_ids={"req-1"}
+    )
+    adapter.handle_preemptions(metadata)
 
     if has_engine:
         lmcache_engine.wait_for_pending_stores.assert_not_called()
+
+
+def test_ascend_adapter_keeps_legacy_preemption_ids_compatible():
+    """Older vLLM versions may still call the adapter with a request-ID set."""
+    pytest.importorskip("lmcache")
+    pytest.importorskip("vllm")
+    adapter_mod = pytest.importorskip("lmcache_ascend.integration.vllm.vllm_v1_adapter")
+
+    lmcache_engine = MagicMock()
+    adapter = _make_adapter(
+        adapter_mod,
+        store_async=False,
+        kv_role="kv_both",
+        lmcache_engine=lmcache_engine,
+    )
+
+    adapter.handle_preemptions({"legacy-req"})
+
+    lmcache_engine.lookup_unpin.assert_called_once_with("legacy-req")

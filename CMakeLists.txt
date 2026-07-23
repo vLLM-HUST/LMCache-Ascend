@@ -33,7 +33,58 @@ else()
     message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
-add_subdirectory(third_party/kvcache-ops)
+# Keep the v0.4.3 kvcache-ops ABI, but make its CANN version checks understand
+# CANN 9.  Apply the compatibility edits to a build-tree copy so the nested
+# submodule remains pinned and clean.
+set(KVCACHE_OPS_SOURCE_DIR "${CMAKE_BINARY_DIR}/kvcache-ops-src")
+file(REMOVE_RECURSE "${KVCACHE_OPS_SOURCE_DIR}")
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/third_party/kvcache-ops/"
+  DESTINATION "${KVCACHE_OPS_SOURCE_DIR}"
+  PATTERN ".git" EXCLUDE
+)
+set(ASCENDC_WITH_DEF "${KVCACHE_OPS_SOURCE_DIR}/ascendc_with_def.cmake")
+file(READ "${ASCENDC_WITH_DEF}" ASCENDC_WITH_DEF_CONTENT)
+string(REPLACE
+  "CANN_VERSION VERSION_EQUAL \"8.3\""
+  "CANN_VERSION VERSION_GREATER_EQUAL \"8.3\""
+  ASCENDC_WITH_DEF_CONTENT
+  "${ASCENDC_WITH_DEF_CONTENT}"
+)
+string(REPLACE
+  "CANN_VERSION VERSION_EQUAL \"8.5\""
+  "CANN_VERSION VERSION_GREATER_EQUAL \"8.5\""
+  ASCENDC_WITH_DEF_CONTENT
+  "${ASCENDC_WITH_DEF_CONTENT}"
+)
+file(WRITE "${ASCENDC_WITH_DEF}" "${ASCENDC_WITH_DEF_CONTENT}")
+add_subdirectory("${KVCACHE_OPS_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/kvcache-ops-build")
+
+# The legacy kvcache-ops helper forwards only its custom INCLUDES property to
+# generated device/host projects.  Populate it explicitly for CANN 9 so those
+# projects can resolve public AscendC headers.
+if(DEFINED ASCEND_AICORE_ARCH)
+  ascendc_include_directories(cache_kernels PRIVATE
+    ${KVCACHE_OPS_SOURCE_DIR}
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/adv_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/basic_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/c_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/basic_api/reg_compute
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/simt_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/impl/utils
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/adv_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/basic_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/aicpu_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/c_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/basic_api/reg_compute
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/simt_api
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/asc/include/utils
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/tikcpp/tikcfw
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/tikcpp/tikcfw/interface
+    ${ASCEND_CANN_PACKAGE_PATH}/${ARCH_SUBDIR}/tikcpp/tikcfw/impl
+  )
+endif()
 
 if(DEFINED ENV{USE_MINDSPORE})
   find_package(Threads REQUIRED)
@@ -103,4 +154,3 @@ else()
 endif()
 
 install(TARGETS c_ops cache_kernels DESTINATION ${LMC_INSTALL_PATH})
-

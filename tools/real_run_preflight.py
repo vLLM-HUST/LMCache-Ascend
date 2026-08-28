@@ -16,6 +16,7 @@ from typing import Any
 import argparse
 import ast
 import json
+import os
 import re
 import socket
 import subprocess
@@ -26,7 +27,13 @@ REQUIRED_COMPONENTS = {
     "worker": "vllm.kv_connector.worker.v1",
     "telemetry": "vllm.kv_connector.telemetry.v1",
 }
-REQUIRED_IMPORTS = ("vllm", "lmcache", "lmcache_ascend", "torch_npu")
+REQUIRED_IMPORTS = (
+    "vllm",
+    "vllm.engine.arg_utils",
+    "lmcache",
+    "lmcache_ascend",
+    "torch_npu",
+)
 
 
 @dataclass(frozen=True)
@@ -36,10 +43,16 @@ class Check:
     evidence: Any
 
 
-def _run(command: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         command,
         cwd=cwd,
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -69,14 +82,41 @@ def _target_lmcache_version(project_root: Path) -> str | None:
     return None
 
 
-def _python_probe(python: Path) -> dict[str, Any]:
+def _last_json_object(output: str) -> dict[str, Any] | None:
+    for line in reversed(output.splitlines()):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _probe_environment(project_root: Path, core_root: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    existing = environment.get("PYTHONPATH")
+    roots = [str(core_root), str(project_root)]
+    if existing:
+        roots.append(existing)
+    environment["PYTHONPATH"] = os.pathsep.join(roots)
+    return environment
+
+
+def _python_probe(python: Path, project_root: Path, core_root: Path) -> dict[str, Any]:
     probe = """
 import importlib
 import importlib.metadata
 import json
 
 modules = {}
-for name in ("vllm", "lmcache", "lmcache_ascend", "torch_npu"):
+for name in (
+    "vllm",
+    "vllm.engine.arg_utils",
+    "lmcache",
+    "lmcache_ascend",
+    "torch_npu",
+):
     try:
         module = importlib.import_module(name)
         modules[name] = {"ok": True, "file": getattr(module, "__file__", None)}
@@ -94,18 +134,44 @@ for distribution in ("vllm", "lmcache", "lmcache-ascend", "torch-npu"):
         versions[distribution] = None
 print(json.dumps({"modules": modules, "versions": versions}, sort_keys=True))
 """
-    result = _run([str(python), "-c", probe])
+    result = _run(
+        [str(python), "-c", probe],
+        cwd=core_root,
+        env=_probe_environment(project_root, core_root),
+    )
     if result.returncode != 0:
         return {
             "probe_ok": False,
             "error": result.stderr.strip() or result.stdout.strip(),
         }
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError:
+    payload = _last_json_object(result.stdout)
+    if payload is None:
         return {"probe_ok": False, "error": "probe returned non-JSON output"}
     payload["probe_ok"] = True
     return payload
+
+
+def _cli_probe(python: Path, project_root: Path, core_root: Path) -> dict[str, Any]:
+    result = _run(
+        [str(python), "-m", "vllm.entrypoints.cli.main", "--help"],
+        cwd=core_root,
+        env=_probe_environment(project_root, core_root),
+    )
+    return {
+        "ok": result.returncode == 0 and "serve" in result.stdout,
+        "returncode": result.returncode,
+        "error": result.stderr.strip() or None,
+    }
+
+
+def _source_is_under(source: str | None, root: Path) -> bool:
+    if source is None:
+        return False
+    try:
+        Path(source).resolve().relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _manifest_probe(project_root: Path) -> dict[str, Any]:
@@ -166,12 +232,17 @@ def build_record(args: argparse.Namespace) -> dict[str, Any]:
     python = args.python.absolute()
     output_is_new = not output_dir.exists()
     python_probe = (
-        _python_probe(python)
+        _python_probe(python, project_root, core_root)
         if python.is_file()
         else {
             "probe_ok": False,
             "error": "python executable does not exist",
         }
+    )
+    cli_probe = (
+        _cli_probe(python, project_root, core_root)
+        if python.is_file() and project_root.is_dir() and core_root.is_dir()
+        else {"ok": False, "error": "python or source root is missing"}
     )
     target_version = _target_lmcache_version(project_root)
     installed_version = python_probe.get("versions", {}).get("lmcache")
@@ -193,6 +264,25 @@ def build_record(args: argparse.Namespace) -> dict[str, Any]:
             and all(imports.get(name, {}).get("ok") for name in REQUIRED_IMPORTS),
             python_probe,
         ),
+        Check(
+            "vllm_source",
+            _source_is_under(imports.get("vllm", {}).get("file"), core_root),
+            {
+                "required_root": str(core_root),
+                "imported_file": imports.get("vllm", {}).get("file"),
+            },
+        ),
+        Check(
+            "lmcache_ascend_source",
+            _source_is_under(
+                imports.get("lmcache_ascend", {}).get("file"), project_root
+            ),
+            {
+                "required_root": str(project_root),
+                "imported_file": imports.get("lmcache_ascend", {}).get("file"),
+            },
+        ),
+        Check("vllm_cli", cli_probe["ok"], cli_probe),
         Check(
             "lmcache_version",
             target_version is not None and installed_version == target_version,

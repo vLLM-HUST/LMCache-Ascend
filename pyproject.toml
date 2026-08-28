@@ -46,6 +46,9 @@ local_scheme = "no-local-version"
 where = [""]
 include = ["lmcache_ascend", "lmcache_ascend*"]
 
+[tool.setuptools.package-data]
+lmcache_ascend_bundle = ["extension-bundle-v1.json"]
+
 [tool.ruff]
 # same as Black's default line length
 line-length = 88

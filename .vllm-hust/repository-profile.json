@@ -20,17 +20,19 @@
       "artifact_type": "bridge",
       "system_role": "kv_integration",
       "delivery_model": "python_distribution",
-      "execution_planes": ["scheduler", "worker"],
+      "execution_planes": ["api", "scheduler", "worker"],
       "integration_contracts": [
         "vllm.kv_connector.scheduler.v1",
-        "vllm.kv_connector.worker.v1"
+        "vllm.kv_connector.worker.v1",
+        "vllm.kv_connector.telemetry.v1"
       ]
     }
   ],
   "system_boundaries": {
     "is": [
       "an Ascend data movement provider for LMCache",
-      "a distribution of framework-specific LMCache adapters"
+      "a distribution of framework-specific LMCache adapters",
+      "a Bundle v1 distribution with split scheduler, worker, and API telemetry roles"
     ],
     "is_not": [
       "the LMCache multi-tier KV state manager or Controller",

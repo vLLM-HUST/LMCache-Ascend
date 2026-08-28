@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "bundle_id": "vllm-hust.lmcache-ascend",
+  "bundle_version": "0.4.4",
+  "host_api_range": ">=1,<2",
+  "components": [
+    {
+      "component_id": "scheduler",
+      "contracts": ["vllm.kv_connector.scheduler.v1"],
+      "execution_planes": ["scheduler"],
+      "isolation": "trusted_in_process",
+      "implementation_ref": "lmcache_ascend.integration.vllm.lmcache_ascend_connector_v1:LMCacheAscendConnectorV1Dynamic",
+      "permissions": [
+        "filesystem_read",
+        "filesystem_write",
+        "ipc",
+        "network_egress",
+        "shared_memory",
+        "subprocess"
+      ]
+    },
+    {
+      "component_id": "worker",
+      "contracts": ["vllm.kv_connector.worker.v1"],
+      "execution_planes": ["worker", "device"],
+      "isolation": "trusted_in_process",
+      "implementation_ref": "lmcache_ascend.integration.vllm.lmcache_ascend_connector_v1:LMCacheAscendConnectorV1Dynamic",
+      "permissions": [
+        "device_access",
+        "filesystem_read",
+        "filesystem_write",
+        "ipc",
+        "network_egress",
+        "shared_memory",
+        "subprocess"
+      ]
+    },
+    {
+      "component_id": "telemetry",
+      "contracts": ["vllm.kv_connector.telemetry.v1"],
+      "execution_planes": ["api"],
+      "isolation": "trusted_in_process",
+      "implementation_ref": "lmcache_ascend_bundle.telemetry:LMCacheAscendTelemetryProvider",
+      "permissions": []
+    }
+  ]
+}

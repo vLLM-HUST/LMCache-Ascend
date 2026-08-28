@@ -194,6 +194,29 @@ ktc = KVTransferConfig(
 
 > **Note**: For vllm-ascend versions >=0.17.0rc1, you can specify `--kv-transfer-config '{"kv_connector":"LMCacheAscendConnector","kv_role":"kv_both"}'`
 
+### Experimental typed Bundle v1 configuration
+
+LMCache-Ascend publishes `lmcache_ascend_bundle/extension-bundle-v1.json` in its
+source tree and wheel for vLLM-HUST's
+experimental typed connector path. The bundle describes three separately owned
+runtime roles: scheduler lookup/admission, worker/device transfer, and an
+API-plane telemetry codec. LMCache remains the external KV state system;
+LMCache-Ascend remains the Ascend provider and vLLM integration distribution.
+
+Set `VLLM_EXTENSION_MANIFESTS` to the absolute manifest path,
+`VLLM_EXTENSION_BUNDLES=vllm-hust.lmcache-ascend`, and explicitly allow the
+permissions declared by the bundle. Select
+`vllm-hust.lmcache-ascend/scheduler`, `/worker`, and `/telemetry` in
+`kv_connector_selection`. Declare
+`requires_piecewise_for_cudagraph=true` when `use_layerwise=true`, and `false`
+otherwise; the host verifies this configuration-dependent capability after the
+owning process imports the connector.
+
+This typed path is experimental. Keep the module-path command above as the
+next-start rollback until matched legacy/typed behavior, failure, shutdown, and
+Ascend hardware evidence are published. Permission declarations are admission
+metadata for trusted in-process code, not OS sandboxing.
+
 ### for SGLang
 
 #### Manual Installation

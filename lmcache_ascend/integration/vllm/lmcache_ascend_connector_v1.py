@@ -23,5 +23,13 @@ logger = init_logger(__name__)
 
 
 class LMCacheAscendConnectorV1Dynamic(LMCacheConnectorV1Dynamic):
-    def __init__(self, vllm_config: "VllmConfig", role: KVConnectorRole) -> None:
+    def __init__(
+        self,
+        vllm_config: "VllmConfig",
+        role: KVConnectorRole,
+        kv_cache_config=None,
+    ) -> None:
+        # LMCache currently owns KV-cache setup through its adapter. Accept the
+        # host's third constructor argument so legacy two-argument callers and
+        # Bundle v1 materialization share the same implementation class.
         super().__init__(vllm_config=vllm_config, role=role)

@@ -217,6 +217,14 @@ next-start rollback until matched legacy/typed behavior, failure, shutdown, and
 Ascend hardware evidence are published. Permission declarations are admission
 metadata for trusted in-process code, not OS sandboxing.
 
+Before a matched run, use
+[`tools/real_run_preflight.py`](tools/real_run_preflight.py) and the
+[`real-run readiness gate`](docs/real-run-readiness.md). The preflight launches
+no service: it verifies the controlled import chain, exact LMCache version,
+bundle roles, model, ports, NPU inventory, fresh evidence directory, and Git
+revisions. A blocked preflight is environment-readiness evidence, not a
+connector or performance failure.
+
 ### for SGLang
 
 #### Manual Installation

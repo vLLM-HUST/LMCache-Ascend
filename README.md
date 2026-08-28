@@ -26,6 +26,16 @@
 
 LMCache-Ascend is a community maintained plugin for running LMCache on the Ascend NPU.
 
+In architecture terms, this repository is an Ascend platform provider and
+integration distribution for the external LMCache system. LMCache owns the
+multi-tier KV state manager and Controller lifecycles; this repository supplies
+Ascend data movement and framework adapters. “Plugin” describes delivery and
+discovery, not the role of the entire LMCache system.
+
+The repository is therefore neither the LMCache service nor part of vLLM core.
+See [`.vllm-hust/repository-profile.json`](./.vllm-hust/repository-profile.json)
+for the machine-readable boundary declaration.
+
 
 ## Prerequisites
 

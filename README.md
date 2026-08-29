@@ -203,9 +203,26 @@ runtime roles: scheduler lookup/admission, worker/device transfer, and an
 API-plane telemetry codec. LMCache remains the external KV state system;
 LMCache-Ascend remains the Ascend provider and vLLM integration distribution.
 
-Set `VLLM_EXTENSION_MANIFESTS` to the absolute manifest path,
-`VLLM_EXTENSION_BUNDLES=vllm-hust.lmcache-ascend`, and explicitly allow the
-permissions declared by the bundle. Select
+The wheel statically registers the manifest through
+`vllm.extension_bundles`; installation does not import the connector or enable
+it. Inspect and validate the installed Bundle, then activate it explicitly:
+
+```bash
+vllm plugin inspect vllm-hust.lmcache-ascend
+vllm plugin validate vllm-hust.lmcache-ascend \
+  --allow-permission device_access \
+  --allow-permission filesystem_read \
+  --allow-permission filesystem_write \
+  --allow-permission ipc \
+  --allow-permission network_egress \
+  --allow-permission shared_memory \
+  --allow-permission subprocess
+
+export VLLM_EXTENSION_ALLOWED_PERMISSIONS=device_access,filesystem_read,filesystem_write,ipc,network_egress,shared_memory,subprocess
+vllm serve MODEL --extension vllm-hust.lmcache-ascend ...
+```
+
+Select
 `vllm-hust.lmcache-ascend/scheduler`, `/worker`, and `/telemetry` in
 `kv_connector_selection`. Declare
 `requires_piecewise_for_cudagraph=true` when `use_layerwise=true`, and `false`

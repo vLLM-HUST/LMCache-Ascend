@@ -78,3 +78,6 @@ def test_lightweight_bundle_and_manifest_are_wheel_package_data() -> None:
     package_data = project["tool"]["setuptools"]["package-data"]
 
     assert package_data["lmcache_ascend_bundle"] == ["extension-bundle-v1.json"]
+    assert project["project"]["entry-points"]["vllm.extension_bundles"] == {
+        "vllm-hust.lmcache-ascend": "lmcache_ascend_bundle"
+    }

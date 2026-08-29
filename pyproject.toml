@@ -32,6 +32,9 @@ classifiers = [
 requires-python = ">=3.10,<3.13"
 dynamic = ["dependencies", "version"]
 
+[project.entry-points."vllm.extension_bundles"]
+"vllm-hust.lmcache-ascend" = "lmcache_ascend_bundle"
+
 [project.urls]
 homepage = "https://docs.lmcache.ai"
 source = "https://github.com/LMCache/LMCache-Ascend"

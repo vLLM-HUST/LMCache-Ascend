@@ -58,3 +58,12 @@ On 2026-08-29, host 112 exposed eight NPUs but the isolated core environment
 lacked `lmcache`, `lmcache_ascend`, and `torch_npu`; the invoking user also
 could not access the Docker daemon. Source checkouts alone are not a controlled
 runtime. The preflight is therefore blocked before service launch.
+
+A later read-only audit confirmed that all eight 910B2 devices are idle with
+approximately 62 GiB free HBM each. Capacity is not the current blocker. The
+host CANN package set exposes HCCL v2 libraries but no `libhccl.so`, while both
+installed torch-npu 2.10 variants link that legacy name; after the documented
+CANN environment is sourced, `libhccl.so` is the sole unresolved dependency in
+the extension module. LMCache 0.4.4 and the generated provider version module
+are also still absent from the controlled core environment. Do not claim a
+hardware failure or bypass the ABI gate with an ad-hoc library symlink.
